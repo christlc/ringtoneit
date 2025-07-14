@@ -20,12 +20,11 @@ This application is automatically deployed to GitHub Pages using GitHub Actions.
 ### Files
 
 - `index.html` - Main application file (default entry point for GitHub Pages)
-- `main.html` - Copy of the main application file
 - `.github/workflows/deploy-pages.yml` - GitHub Actions workflow for deployment
 
 ## Usage
 
-Visit the GitHub Pages URL to use the application, or run locally by opening `index.html` or `main.html` in a web browser.
+Visit the GitHub Pages URL to use the application, or run locally by opening `index.html` in a web browser.
 
 ## Technology Stack
 
