@@ -426,18 +426,76 @@
                     showStatus('Cannot generate a ringtone with zero duration.', 'error');
                     return;
                 }
+                
+                // Use native Web Audio API for reliable offline rendering
                 const sampleRate = 44100;
                 const offlineCtx = new OfflineAudioContext(1, sampleRate * totalDuration, sampleRate);
-                const localSynth = new Tone.FMSynth({ harmonicity: 3, modulationIndex: 10, oscillator: { type: "sine" }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.5, release: 0.5 }, modulation: { type: "square" }, modulationEnvelope: { attack: 0.01, decay: 0.2, sustain: 0.3, release: 0.5 } }).connect(offlineCtx.destination);
+                
+                // Note frequencies (in Hz) for different octaves
+                const noteFrequencies = {
+                    'C': [130.81, 261.63, 523.25, 1046.50, 2093.00],
+                    'C#': [138.59, 277.18, 554.37, 1108.73, 2217.46],
+                    'D': [146.83, 293.66, 587.33, 1174.66, 2349.32],
+                    'D#': [155.56, 311.13, 622.25, 1244.51, 2489.02],
+                    'E': [164.81, 329.63, 659.25, 1318.51, 2637.02],
+                    'F': [174.61, 349.23, 698.46, 1396.91, 2793.83],
+                    'F#': [185.00, 369.99, 739.99, 1479.98, 2959.96],
+                    'G': [196.00, 392.00, 783.99, 1567.98, 3135.96],
+                    'G#': [207.65, 415.30, 830.61, 1661.22, 3322.44],
+                    'A': [220.00, 440.00, 880.00, 1760.00, 3520.00],
+                    'A#': [233.08, 466.16, 932.33, 1864.66, 3729.31],
+                    'B': [246.94, 493.88, 987.77, 1975.53, 3951.07]
+                };
+                
+                function getFrequency(pitch) {
+                    const match = pitch.match(/([A-G])([#]?)(\d)/);
+                    if (!match) return 0;
+                    const note = match[1] + (match[2] || '');
+                    const octave = parseInt(match[3]) - 4; // Convert to 0-based index
+                    return noteFrequencies[note] && noteFrequencies[note][octave] ? noteFrequencies[note][octave] : 0;
+                }
+                
+                // Generate audio for each note
                 let currentTime = 0;
                 song.notes.forEach(note => {
                     const durationInSeconds = note.duration * 4 * secondsPerBeat;
                     if (note.type === 'note') {
-                        localSynth.triggerAttackRelease(note.pitch, durationInSeconds * 0.9, currentTime);
+                        const frequency = getFrequency(note.pitch);
+                        if (frequency > 0) {
+                            // Create oscillator and gain nodes
+                            const oscillator = offlineCtx.createOscillator();
+                            const gainNode = offlineCtx.createGain();
+                            
+                            // Configure oscillator (using square wave for retro sound)
+                            oscillator.type = 'square';
+                            oscillator.frequency.value = frequency;
+                            
+                            // Configure envelope (attack, decay, sustain, release)
+                            const attackTime = 0.01;
+                            const decayTime = 0.1;
+                            const sustainLevel = 0.3;
+                            const releaseTime = 0.1;
+                            const noteEndTime = currentTime + durationInSeconds * 0.9;
+                            
+                            gainNode.gain.setValueAtTime(0, currentTime);
+                            gainNode.gain.linearRampToValueAtTime(0.2, currentTime + attackTime);
+                            gainNode.gain.linearRampToValueAtTime(0.2 * sustainLevel, currentTime + attackTime + decayTime);
+                            gainNode.gain.setValueAtTime(0.2 * sustainLevel, noteEndTime - releaseTime);
+                            gainNode.gain.linearRampToValueAtTime(0, noteEndTime);
+                            
+                            // Connect nodes
+                            oscillator.connect(gainNode);
+                            gainNode.connect(offlineCtx.destination);
+                            
+                            // Schedule oscillator
+                            oscillator.start(currentTime);
+                            oscillator.stop(noteEndTime);
+                        }
                     }
                     currentTime += durationInSeconds;
                 });
-                const buffer = await offlineCtx.render();
+                
+                const buffer = await offlineCtx.startRendering();
                 const wavData = bufferToWav(buffer);
                 const blob = new Blob([wavData], { type: 'audio/wav' });
                 const url = URL.createObjectURL(blob);
